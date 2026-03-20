@@ -9,6 +9,8 @@ DEFAULT_LIMIT = 20
 DEFAULT_CATEGORY = "backend"
 DEFAULT_FEED_SORT = 200
 DEFAULT_SEARCH_TYPE = 0
+DEFAULT_USER_POSTS_LIMIT = 10
+HOT_ALL_CATEGORY_ID = "1"
 
 USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -25,4 +27,14 @@ SEARCH_SORTS = {
     "all": 0,
     "newest": 1,
     "hottest": 2,
+}
+
+USER_POST_SORTS = {
+    "newest": "newest",
+    "popular": "popular",
+}
+
+HOT_RANK_TYPES = {
+    "hot": "hot",
+    "collect": "collect",
 }

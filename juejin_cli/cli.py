@@ -13,7 +13,15 @@ from .cache import (
     save_search_cursor,
 )
 from .client import JuejinCliError, JuejinClient
-from .constants import DEFAULT_CATEGORY, DEFAULT_LIMIT, SEARCH_SORTS
+from .constants import (
+    DEFAULT_CATEGORY,
+    DEFAULT_LIMIT,
+    DEFAULT_USER_POSTS_LIMIT,
+    HOT_ALL_CATEGORY_ID,
+    HOT_RANK_TYPES,
+    SEARCH_SORTS,
+    USER_POST_SORTS,
+)
 from .output import (
     emit_structured,
     render_article,
@@ -21,7 +29,15 @@ from .output import (
     render_categories,
     render_pagination,
 )
-from .parser import normalize_feed_items, normalize_search_items, parse_article_html, parse_article_reference
+from .parser import (
+    normalize_feed_items,
+    normalize_rank_items,
+    normalize_search_items,
+    parse_article_html,
+    parse_article_reference,
+    parse_user_posts_html,
+    parse_user_reference,
+)
 
 
 def structured_output_options(func):
@@ -47,6 +63,18 @@ def _resolve_category(categories: List[Dict[str, Any]], raw: str) -> Dict[str, A
     raise click.ClickException(f"Unknown category: {raw}")
 
 
+def _get_hot_categories(categories: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    items = [
+        {
+            "category_id": HOT_ALL_CATEGORY_ID,
+            "category_name": "综合",
+            "category_url": "all",
+        }
+    ]
+    items.extend(item for item in categories if str(item.get("category_id", "")).strip() != HOT_ALL_CATEGORY_ID)
+    return items
+
+
 def _normalize_cursor(raw: str) -> str:
     return raw.strip() or "0"
 
@@ -60,6 +88,14 @@ def _resolve_article_id(reference: str) -> str:
         return str(cached["article_id"])
     try:
         return parse_article_reference(raw)
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+
+def _resolve_user_id(reference: str) -> str:
+    raw = reference.strip()
+    try:
+        return parse_user_reference(raw)
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
 
@@ -198,6 +234,66 @@ def feed(category_ref: str, cursor: str, limit: int, as_json: bool, as_yaml: boo
     render_pagination(str(result["cursor"]), bool(result["has_more"]))
 
 
+@cli.command("recommended")
+@click.option("--cursor", default="0", show_default=True)
+@click.option("--limit", default=DEFAULT_LIMIT, show_default=True, type=click.IntRange(min=1))
+@structured_output_options
+def recommended(cursor: str, limit: int, as_json: bool, as_yaml: bool) -> None:
+    """Browse the global recommended feed."""
+    with JuejinClient() as client:
+        payload = client.get_recommended_feed(
+            cursor=_normalize_cursor(cursor),
+            limit=limit,
+        )
+
+    items = normalize_feed_items(payload)
+    save_index(items)
+    result = {
+        "cursor": payload.get("cursor", ""),
+        "has_more": bool(payload.get("has_more", False)),
+        "items": items,
+    }
+    if emit_structured(result, as_json=as_json, as_yaml=as_yaml):
+        return
+    render_article_list("Juejin Recommended", items)
+    render_pagination(str(result["cursor"]), bool(result["has_more"]))
+
+
+@cli.command()
+@click.option("--category", "category_ref", default="all", show_default=True)
+@click.option(
+    "--type",
+    "rank_type",
+    type=click.Choice(sorted(HOT_RANK_TYPES.keys())),
+    default="hot",
+    show_default=True,
+)
+@click.option("--limit", default=DEFAULT_LIMIT, show_default=True, type=click.IntRange(min=1))
+@structured_output_options
+def hot(category_ref: str, rank_type: str, limit: int, as_json: bool, as_yaml: bool) -> None:
+    """Browse the article hot rankings."""
+    with JuejinClient() as client:
+        hot_categories = _get_hot_categories(client.get_categories())
+        category = _resolve_category(hot_categories, category_ref)
+        payload = client.get_article_rank(
+            category_id=str(category["category_id"]),
+            rank_type=HOT_RANK_TYPES[rank_type],
+        )
+
+    category_lookup = {str(item.get("category_id") or "").strip(): item for item in hot_categories}
+    items = normalize_rank_items(payload, category_lookup=category_lookup)[:limit]
+    save_index(items)
+    result = {
+        "category": category,
+        "type": rank_type,
+        "items": items,
+    }
+    if emit_structured(result, as_json=as_json, as_yaml=as_yaml):
+        return
+    title = "Juejin Hot Articles" if rank_type == "hot" else "Juejin Collected Articles Rank"
+    render_article_list(f"{title}: {category['category_name']}", items)
+
+
 @cli.command()
 @click.argument("query")
 @click.option("--cursor", default="0", show_default=True)
@@ -223,6 +319,51 @@ def search(query: str, cursor: str, limit: int, sort: str, as_json: bool, as_yam
     if emit_structured(result, as_json=as_json, as_yaml=as_yaml):
         return
     render_article_list(f"Juejin Search: {query}", items)
+    render_pagination(str(result["cursor"]), bool(result["has_more"]))
+
+
+@cli.command("user-posts")
+@click.argument("reference")
+@click.option(
+    "--sort",
+    type=click.Choice(sorted(USER_POST_SORTS.keys())),
+    default="newest",
+    show_default=True,
+)
+@click.option("--cursor", default="0", show_default=True)
+@click.option(
+    "--limit",
+    default=DEFAULT_USER_POSTS_LIMIT,
+    show_default=True,
+    type=click.IntRange(min=1, max=DEFAULT_USER_POSTS_LIMIT),
+)
+@structured_output_options
+def user_posts(
+    reference: str,
+    sort: str,
+    cursor: str,
+    limit: int,
+    as_json: bool,
+    as_yaml: bool,
+) -> None:
+    """List a user's posts by user ID or profile URL."""
+    user_id = _resolve_user_id(reference)
+    with JuejinClient() as client:
+        html = client.fetch_user_posts_html(
+            user_id,
+            sort=USER_POST_SORTS[sort],
+            cursor=_normalize_cursor(cursor),
+        )
+
+    result = parse_user_posts_html(html, user_id)
+    items = result["items"][:limit]
+    save_index(items)
+    result["items"] = items
+    result["sort"] = sort
+    if emit_structured(result, as_json=as_json, as_yaml=as_yaml):
+        return
+    user_name = result["user"].get("user_name") or user_id
+    render_article_list(f"Juejin User Posts: {user_name}", items)
     render_pagination(str(result["cursor"]), bool(result["has_more"]))
 
 

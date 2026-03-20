@@ -3,12 +3,13 @@ from __future__ import annotations
 import re
 from html import unescape
 from typing import Any, Dict, List, Optional
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from bs4 import BeautifulSoup
 from markdownify import markdownify as html_to_markdown
 
 ARTICLE_URL_RE = re.compile(r"/post/(\d+)")
+USER_URL_RE = re.compile(r"/user/(\d+)")
 
 
 def parse_article_reference(raw: str) -> str:
@@ -26,34 +27,30 @@ def parse_article_reference(raw: str) -> str:
     raise ValueError(f"Unsupported article reference: {value}")
 
 
+def parse_user_reference(raw: str) -> str:
+    value = raw.strip()
+    if not value:
+        raise ValueError("Empty user reference")
+    if value.isdigit():
+        return value
+    match = USER_URL_RE.search(value)
+    if match:
+        return match.group(1)
+    parsed = urlparse(value)
+    if parsed.scheme or parsed.netloc:
+        raise ValueError(f"Unsupported Juejin user URL: {value}")
+    raise ValueError(f"Unsupported user reference: {value}")
+
+
 def normalize_feed_items(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
     items = payload.get("data")
     if not isinstance(items, list):
         return []
     rows: List[Dict[str, Any]] = []
     for entry in items:
-        article = entry.get("article_info") or {}
-        author = entry.get("author_user_info") or {}
-        category = entry.get("category") or {}
-        tags = entry.get("tags") or []
-        article_id = str(entry.get("article_id") or article.get("article_id") or "").strip()
-        if not article_id:
-            continue
-        rows.append(
-            {
-                "article_id": article_id,
-                "title": str(article.get("title") or "").strip(),
-                "author": str(author.get("user_name") or "").strip(),
-                "category": str(category.get("category_url") or category.get("category_name") or "").strip(),
-                "brief": str(article.get("brief_content") or "").strip(),
-                "views": int(article.get("view_count") or 0),
-                "diggs": int(article.get("digg_count") or 0),
-                "comments": int(article.get("comment_count") or 0),
-                "read_time": str(article.get("read_time") or "").strip(),
-                "tags": [str(tag.get("tag_name") or "").strip() for tag in tags if isinstance(tag, dict)],
-                "url": f"https://juejin.cn/post/{article_id}",
-            }
-        )
+        row = _normalize_article_entry(entry)
+        if row:
+            rows.append(row)
     return rows
 
 
@@ -89,6 +86,112 @@ def normalize_search_items(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
             }
         )
     return rows
+
+
+def normalize_rank_items(
+    payload: Dict[str, Any],
+    *,
+    category_lookup: Optional[Dict[str, Dict[str, Any]]] = None,
+) -> List[Dict[str, Any]]:
+    items = payload.get("data")
+    if not isinstance(items, list):
+        return []
+    rows: List[Dict[str, Any]] = []
+    for entry in items:
+        content = entry.get("content") or {}
+        counters = entry.get("content_counter") or {}
+        author = entry.get("author") or {}
+        article_id = str(content.get("content_id") or "").strip()
+        if not article_id:
+            continue
+
+        category_id = str(content.get("category_id") or "").strip()
+        category_meta = category_lookup.get(category_id, {}) if category_lookup else {}
+        category = str(
+            category_meta.get("category_url") or category_meta.get("category_name") or category_id
+        ).strip()
+
+        rows.append(
+            {
+                "article_id": article_id,
+                "title": str(content.get("title") or "").strip(),
+                "author": str(author.get("name") or "").strip(),
+                "category": category,
+                "category_id": category_id,
+                "brief": str(content.get("brief") or "").strip(),
+                "views": int(counters.get("view") or 0),
+                "diggs": int(counters.get("like") or 0),
+                "comments": int(counters.get("comment_count") or 0),
+                "collects": int(counters.get("collect") or 0),
+                "interactions": int(counters.get("interact_count") or 0),
+                "hot_index": counters.get("hot_rank") or 0,
+                "read_time": "",
+                "tags": [],
+                "url": f"https://juejin.cn/post/{article_id}",
+            }
+        )
+    return rows
+
+
+def parse_user_posts_html(html: str, user_id: str) -> Dict[str, Any]:
+    soup = BeautifulSoup(html, "html.parser")
+
+    user_name = ""
+    user_name_node = soup.select_one(".user-name, .username, h1")
+    if user_name_node:
+        user_name = user_name_node.get_text(" ", strip=True)
+
+    items: List[Dict[str, Any]] = []
+    for entry in soup.select(".entry-list .entry"):
+        article_id = str(entry.get("data-entry-id") or "").strip()
+        if not article_id:
+            continue
+
+        title_node = entry.select_one("a.title")
+        brief_node = entry.select_one(".abstract")
+        date_node = entry.select_one(".entry-footer .item.date")
+        view_node = entry.select_one(".entry-footer .item.view span")
+        like_node = entry.select_one(".entry-footer .item.like span")
+        comment_node = entry.select_one(".entry-footer .item.comment span")
+
+        title = title_node.get_text(" ", strip=True) if title_node else ""
+        brief = brief_node.get_text(" ", strip=True) if brief_node else ""
+        published_at = _clean_footer_text(date_node.get_text(" ", strip=True) if date_node else "")
+
+        items.append(
+            {
+                "article_id": article_id,
+                "title": title,
+                "author": user_name,
+                "category": "",
+                "brief": brief,
+                "views": _parse_metric(view_node.get_text(" ", strip=True) if view_node else ""),
+                "diggs": _parse_metric(like_node.get_text(" ", strip=True) if like_node else ""),
+                "comments": _parse_metric(comment_node.get_text(" ", strip=True) if comment_node else ""),
+                "read_time": "",
+                "published_at": published_at,
+                "tags": [],
+                "url": f"https://juejin.cn/post/{article_id}",
+            }
+        )
+
+    next_page = soup.select_one("a.next-page")
+    next_cursor = ""
+    if next_page and next_page.get("href"):
+        href = str(next_page["href"])
+        query = parse_qs(urlparse(href).query)
+        next_cursor = (query.get("cursor") or [""])[0].strip()
+
+    return {
+        "user": {
+            "user_id": user_id,
+            "user_name": user_name,
+            "url": f"https://juejin.cn/user/{user_id}/posts",
+        },
+        "cursor": next_cursor,
+        "has_more": bool(next_cursor),
+        "items": items,
+    }
 
 
 def parse_article_html(html: str, article_id: str) -> Dict[str, Any]:
@@ -162,6 +265,54 @@ def parse_article_html(html: str, article_id: str) -> Dict[str, Any]:
 def _strip_highlight(value: str) -> str:
     text = re.sub(r"</?em>", "", value)
     return unescape(text).strip()
+
+
+def _normalize_article_entry(entry: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    source = entry.get("item_info") if isinstance(entry.get("item_info"), dict) else entry
+    if not isinstance(source, dict):
+        return None
+    article = source.get("article_info") or {}
+    author = source.get("author_user_info") or {}
+    category = source.get("category") or {}
+    tags = source.get("tags") or []
+    article_id = str(source.get("article_id") or article.get("article_id") or "").strip()
+    if not article_id:
+        return None
+    return {
+        "article_id": article_id,
+        "title": str(article.get("title") or "").strip(),
+        "author": str(author.get("user_name") or "").strip(),
+        "category": str(category.get("category_url") or category.get("category_name") or "").strip(),
+        "brief": str(article.get("brief_content") or "").strip(),
+        "views": int(article.get("view_count") or 0),
+        "diggs": int(article.get("digg_count") or 0),
+        "comments": int(article.get("comment_count") or 0),
+        "read_time": str(article.get("read_time") or "").strip(),
+        "tags": [str(tag.get("tag_name") or "").strip() for tag in tags if isinstance(tag, dict)],
+        "url": f"https://juejin.cn/post/{article_id}",
+    }
+
+
+def _parse_metric(raw: str) -> int:
+    value = raw.strip().lower().replace(",", "")
+    if not value:
+        return 0
+    if value.endswith("k"):
+        try:
+            return int(float(value[:-1]) * 1000)
+        except ValueError:
+            return 0
+    if value.endswith("w"):
+        try:
+            return int(float(value[:-1]) * 10000)
+        except ValueError:
+            return 0
+    digits = re.sub(r"[^\d]", "", value)
+    return int(digits) if digits else 0
+
+
+def _clean_footer_text(value: str) -> str:
+    return re.sub(r"\s+", " ", value).strip().strip("|")
 
 
 def _clean_markdown(value: str) -> str:

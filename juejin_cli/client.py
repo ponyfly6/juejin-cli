@@ -89,6 +89,36 @@ class JuejinClient:
         )
         return self._handle_response(resp)
 
+    def get_recommended_feed(
+        self,
+        cursor: str = "0",
+        limit: int = 20,
+        sort_type: int = DEFAULT_FEED_SORT,
+    ) -> Dict[str, Any]:
+        resp = self._http.post(
+            f"{API_HOST}/recommend_api/v1/article/recommend_all_feed",
+            params=self._common_params(),
+            json={
+                "id_type": 2,
+                "cursor": cursor,
+                "limit": limit,
+                "sort_type": sort_type,
+            },
+        )
+        return self._handle_response(resp)
+
+    def get_article_rank(self, category_id: str = "1", rank_type: str = "hot") -> Dict[str, Any]:
+        resp = self._http.get(
+            f"{API_HOST}/content_api/v1/content/article_rank",
+            params=self._common_params(
+                {
+                    "category_id": category_id,
+                    "type": rank_type,
+                }
+            ),
+        )
+        return self._handle_response(resp)
+
     def search_articles(
         self,
         query: str,
@@ -113,5 +143,17 @@ class JuejinClient:
 
     def fetch_article_html(self, article_id: str) -> str:
         resp = self._http.get(f"{WEB_HOST}/post/{article_id}", headers={"Accept": "text/html"})
+        resp.raise_for_status()
+        return resp.text
+
+    def fetch_user_posts_html(self, user_id: str, *, sort: str = "newest", cursor: str = "0") -> str:
+        params: Dict[str, Any] = {"sort": sort}
+        if cursor and cursor != "0":
+            params["cursor"] = cursor
+        resp = self._http.get(
+            f"{WEB_HOST}/user/{user_id}/posts",
+            params=params,
+            headers={"Accept": "text/html"},
+        )
         resp.raise_for_status()
         return resp.text
