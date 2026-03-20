@@ -7,6 +7,9 @@ Current scope:
 - list article categories
 - browse category feeds
 - browse article hot rankings
+- browse hot ranked columns
+- browse hot ranked collection sets
+- browse hot ranked authors
 - browse the recommended home feed
 - search articles
 - list a user's posts
@@ -37,6 +40,10 @@ juejin recommended --limit 5
 juejin hot --limit 10
 juejin hot --category backend --limit 5
 juejin hot --type collect --category all --json
+juejin hot-columns --limit 10
+juejin hot-collections --limit 10
+juejin hot-authors --category ai --period weekly --limit 5
+juejin hot-authors --category backend --period monthly --json
 
 # Search
 juejin search "python" --limit 5
@@ -60,5 +67,15 @@ Pagination:
 
 - `feed`, `recommended`, `search`, and `user-posts` print a `next cursor` when more results are available
 - reuse it with `--cursor <value>` to continue
-- `hot` returns a fixed rank list and does not use cursor pagination
-- `read 1` and `export-md 1` resolve against the latest list output from `feed`, `hot`, `recommended`, `search`, or `user-posts`
+- `hot`, `hot-columns`, `hot-collections`, and `hot-authors` return fixed rank lists and do not use cursor pagination
+- `read 1` and `export-md 1` resolve against the latest article list output from `feed`, `hot`, `recommended`, `search`, or `user-posts`
+
+Hot author categories:
+
+- `backend`
+- `frontend`
+- `client`
+- `ai`
+- `tools`
+- `career`
+- `reading`

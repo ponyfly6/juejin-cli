@@ -10,6 +10,7 @@ from .constants import (
     API_HOST,
     DEFAULT_FEED_SORT,
     DEFAULT_SEARCH_TYPE,
+    HOT_RANK_SORT_DESC,
     USER_AGENT,
     WEB_HOST,
 )
@@ -116,6 +117,59 @@ class JuejinClient:
                     "type": rank_type,
                 }
             ),
+        )
+        return self._handle_response(resp)
+
+    def get_column_rank(
+        self,
+        page_size: int = 30,
+        cursor: str = "0",
+        sort_type: int = HOT_RANK_SORT_DESC,
+    ) -> Dict[str, Any]:
+        resp = self._http.post(
+            f"{API_HOST}/content_api/v1/column/selected_rank",
+            params=self._common_params(),
+            json={
+                "page_size": page_size,
+                "cursor": cursor,
+                "sort_type": sort_type,
+            },
+        )
+        return self._handle_response(resp)
+
+    def get_collection_rank(
+        self,
+        limit: int = 30,
+        cursor: str = "0",
+        sort_type: int = HOT_RANK_SORT_DESC,
+    ) -> Dict[str, Any]:
+        resp = self._http.post(
+            f"{API_HOST}/interact_api/v2/collectionset/collection_recommend_rank",
+            params=self._common_params(),
+            json={
+                "limit": limit,
+                "module_type": 0,
+                "cursor": cursor,
+                "sort_type": sort_type,
+                "filter": {
+                    "article_info": True,
+                },
+            },
+        )
+        return self._handle_response(resp)
+
+    def get_quality_author_rank(
+        self,
+        item_rank_type: int = 1,
+        item_sub_rank_type: str = "",
+    ) -> Dict[str, Any]:
+        resp = self._http.post(
+            f"{API_HOST}/user_api/v1/quality_user/rank",
+            params=self._common_params(),
+            json={
+                "item_rank_type": item_rank_type,
+                "item_sub_rank_type": item_sub_rank_type,
+            },
         )
         return self._handle_response(resp)
 

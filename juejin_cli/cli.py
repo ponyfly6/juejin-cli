@@ -18,6 +18,8 @@ from .constants import (
     DEFAULT_LIMIT,
     DEFAULT_USER_POSTS_LIMIT,
     HOT_ALL_CATEGORY_ID,
+    HOT_AUTHOR_CATEGORIES,
+    HOT_AUTHOR_PERIODS,
     HOT_RANK_TYPES,
     SEARCH_SORTS,
     USER_POST_SORTS,
@@ -26,11 +28,17 @@ from .output import (
     emit_structured,
     render_article,
     render_article_list,
+    render_author_rank_list,
     render_categories,
+    render_collection_list,
+    render_column_list,
     render_pagination,
 )
 from .parser import (
     normalize_feed_items,
+    normalize_author_rank_items,
+    normalize_collection_rank_items,
+    normalize_column_rank_items,
     normalize_rank_items,
     normalize_search_items,
     parse_article_html,
@@ -77,6 +85,18 @@ def _get_hot_categories(categories: List[Dict[str, Any]]) -> List[Dict[str, Any]
 
 def _normalize_cursor(raw: str) -> str:
     return raw.strip() or "0"
+
+
+def _resolve_hot_author_category(raw: str) -> Dict[str, str]:
+    needle = raw.strip().lower()
+    for slug, item in HOT_AUTHOR_CATEGORIES.items():
+        if needle == slug:
+            return {"slug": slug, **item}
+        if needle == str(item.get("id", "")).strip():
+            return {"slug": slug, **item}
+        if needle == str(item.get("name", "")).strip().lower():
+            return {"slug": slug, **item}
+    raise click.ClickException(f"Unknown author rank category: {raw}")
 
 
 def _resolve_article_id(reference: str) -> str:
@@ -292,6 +312,78 @@ def hot(category_ref: str, rank_type: str, limit: int, as_json: bool, as_yaml: b
         return
     title = "Juejin Hot Articles" if rank_type == "hot" else "Juejin Collected Articles Rank"
     render_article_list(f"{title}: {category['category_name']}", items)
+
+
+@cli.command("hot-columns")
+@click.option("--limit", default=DEFAULT_LIMIT, show_default=True, type=click.IntRange(min=1))
+@structured_output_options
+def hot_columns(limit: int, as_json: bool, as_yaml: bool) -> None:
+    """Browse the hot ranked columns."""
+    with JuejinClient() as client:
+        payload = client.get_column_rank(page_size=max(limit, 30))
+
+    items = normalize_column_rank_items(payload)[:limit]
+    result = {
+        "items": items,
+    }
+    if emit_structured(result, as_json=as_json, as_yaml=as_yaml):
+        return
+    render_column_list("Juejin Hot Columns", items)
+
+
+@cli.command("hot-collections")
+@click.option("--limit", default=DEFAULT_LIMIT, show_default=True, type=click.IntRange(min=1))
+@structured_output_options
+def hot_collections(limit: int, as_json: bool, as_yaml: bool) -> None:
+    """Browse the hot ranked collection sets."""
+    with JuejinClient() as client:
+        payload = client.get_collection_rank(limit=max(limit, 30))
+
+    items = normalize_collection_rank_items(payload)[:limit]
+    result = {
+        "items": items,
+    }
+    if emit_structured(result, as_json=as_json, as_yaml=as_yaml):
+        return
+    render_collection_list("Juejin Hot Collections", items)
+
+
+@cli.command("hot-authors")
+@click.option("--category", "category_ref", default="backend", show_default=True)
+@click.option(
+    "--period",
+    type=click.Choice(sorted(HOT_AUTHOR_PERIODS.keys())),
+    default="weekly",
+    show_default=True,
+)
+@click.option("--limit", default=10, show_default=True, type=click.IntRange(min=1))
+@structured_output_options
+def hot_authors(
+    category_ref: str,
+    period: str,
+    limit: int,
+    as_json: bool,
+    as_yaml: bool,
+) -> None:
+    """Browse the quality author rankings."""
+    category = _resolve_hot_author_category(category_ref)
+    with JuejinClient() as client:
+        payload = client.get_quality_author_rank(
+            item_rank_type=HOT_AUTHOR_PERIODS[period],
+            item_sub_rank_type=str(category["id"]),
+        )
+
+    items = normalize_author_rank_items(payload)[:limit]
+    rank_period = (payload.get("data") or {}).get("rank_period") or {}
+    result = {
+        "category": category,
+        "period": period,
+        "rank_period": rank_period,
+        "items": items,
+    }
+    if emit_structured(result, as_json=as_json, as_yaml=as_yaml):
+        return
+    render_author_rank_list(f"Juejin Hot Authors: {category['name']} ({period})", items)
 
 
 @cli.command()

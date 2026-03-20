@@ -64,6 +64,64 @@ def render_article_list(title: str, items: List[Dict[str, Any]]) -> None:
     console.print(table)
 
 
+def render_column_list(title: str, items: List[Dict[str, Any]]) -> None:
+    table = Table(title=title)
+    table.add_column("#", justify="right")
+    table.add_column("title", overflow="fold")
+    table.add_column("author")
+    table.add_column("followers", justify="right")
+    table.add_column("articles", justify="right")
+    for idx, item in enumerate(items, start=1):
+        table.add_row(
+            str(idx),
+            str(item.get("title", "")),
+            str(item.get("author", "")),
+            str(item.get("followers", "")),
+            str(item.get("articles", "")),
+        )
+    console.print(table)
+
+
+def render_collection_list(title: str, items: List[Dict[str, Any]]) -> None:
+    table = Table(title=title)
+    table.add_column("#", justify="right")
+    table.add_column("title", overflow="fold")
+    table.add_column("creator")
+    table.add_column("followers", justify="right")
+    table.add_column("articles", justify="right")
+    for idx, item in enumerate(items, start=1):
+        table.add_row(
+            str(idx),
+            str(item.get("title", "")),
+            str(item.get("creator", "")),
+            str(item.get("followers", "")),
+            str(item.get("articles", "")),
+        )
+    console.print(table)
+
+
+def render_author_rank_list(title: str, items: List[Dict[str, Any]]) -> None:
+    table = Table(title=title)
+    table.add_column("#", justify="right")
+    table.add_column("author")
+    table.add_column("title")
+    table.add_column("company")
+    table.add_column("followers", justify="right")
+    table.add_column("diggs", justify="right")
+    table.add_column("hot", justify="right")
+    for item in items:
+        table.add_row(
+            str(item.get("rank", "")),
+            str(item.get("user_name", "")),
+            str(item.get("job_title", "")),
+            str(item.get("company", "")),
+            str(item.get("follower_count", "")),
+            str(item.get("got_digg_count", "")),
+            str(item.get("hot_value", "")),
+        )
+    console.print(table)
+
+
 def render_pagination(cursor: str, has_more: bool) -> None:
     if not has_more:
         return

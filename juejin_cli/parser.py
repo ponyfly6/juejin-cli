@@ -133,6 +133,106 @@ def normalize_rank_items(
     return rows
 
 
+def normalize_column_rank_items(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
+    items = payload.get("data")
+    if not isinstance(items, list):
+        return []
+    rows: List[Dict[str, Any]] = []
+    for entry in items:
+        wrapped = entry.get("column") or {}
+        column = wrapped.get("column") or {}
+        version = wrapped.get("column_version") or {}
+        author = wrapped.get("author") or {}
+
+        column_id = str(wrapped.get("column_id") or column.get("column_id") or "").strip()
+        if not column_id:
+            continue
+
+        rows.append(
+            {
+                "column_id": column_id,
+                "title": str(version.get("title") or "").strip(),
+                "description": str(version.get("content") or entry.get("description") or "").strip(),
+                "author": str(author.get("user_name") or "").strip(),
+                "author_id": str(author.get("user_id") or "").strip(),
+                "followers": int(column.get("follow_cnt") or 0),
+                "articles": int(column.get("article_cnt") or 0),
+                "cover": str(version.get("cover") or "").strip(),
+                "url": f"https://juejin.cn/column/{column_id}",
+                "author_url": f"https://juejin.cn/user/{author.get('user_id')}"
+                if author.get("user_id")
+                else "",
+            }
+        )
+    return rows
+
+
+def normalize_collection_rank_items(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
+    items = payload.get("data")
+    if not isinstance(items, list):
+        return []
+    rows: List[Dict[str, Any]] = []
+    for entry in items:
+        collection = entry.get("collection_set") or {}
+        creator = entry.get("creator") or {}
+        collection_id = str(collection.get("collection_id") or "").strip()
+        if not collection_id:
+            continue
+
+        rows.append(
+            {
+                "collection_id": collection_id,
+                "title": str(collection.get("collection_name") or "").strip(),
+                "description": str(collection.get("description") or entry.get("description") or "").strip(),
+                "creator": str(creator.get("user_name") or "").strip(),
+                "creator_id": str(creator.get("user_id") or "").strip(),
+                "followers": int(collection.get("concern_user_count") or 0),
+                "articles": int(collection.get("post_article_count") or 0),
+                "url": f"https://juejin.cn/collection/{collection_id}",
+                "creator_url": f"https://juejin.cn/user/{creator.get('user_id')}"
+                if creator.get("user_id")
+                else "",
+            }
+        )
+    return rows
+
+
+def normalize_author_rank_items(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
+    data = payload.get("data")
+    if not isinstance(data, dict):
+        return []
+    items = data.get("user_rank_list")
+    if not isinstance(items, list):
+        return []
+
+    rows: List[Dict[str, Any]] = []
+    for entry in items:
+        user = entry.get("user_info") or {}
+        user_id = str(user.get("user_id") or "").strip()
+        if not user_id:
+            continue
+
+        rows.append(
+            {
+                "rank": int(entry.get("rank") or 0),
+                "hot_value": int(entry.get("hot_value") or 0),
+                "user_id": user_id,
+                "user_name": str(user.get("user_name") or "").strip(),
+                "job_title": str(user.get("job_title") or "").strip(),
+                "company": str(user.get("company") or "").strip(),
+                "follower_count": int(user.get("follower_count") or 0),
+                "got_digg_count": int(user.get("got_digg_count") or 0),
+                "post_article_count": int(user.get("post_article_count") or 0),
+                "collection_set_article_count": int(user.get("collection_set_article_count") or 0),
+                "level": int(user.get("level") or 0),
+                "avatar": str(user.get("avatar_large") or "").strip(),
+                "description": str(user.get("description") or "").strip(),
+                "url": f"https://juejin.cn/user/{user_id}",
+            }
+        )
+    return rows
+
+
 def parse_user_posts_html(html: str, user_id: str) -> Dict[str, Any]:
     soup = BeautifulSoup(html, "html.parser")
 
