@@ -1,0 +1,6 @@
+interface:
+  display_name: "Juejin CLI"
+  short_description: "Use local CLI to browse current Juejin content"
+  default_prompt: "Use $juejin-cli to inspect current Juejin content through the local CLI, prefer `--json`, and only use `read` or `export-md` for articles."
+policy:
+  allow_implicit_invocation: true
