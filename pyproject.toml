@@ -1,0 +1,30 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "juejin-cli"
+version = "0.1.0"
+description = "A terminal-first CLI for Juejin — search, browse, read, and export articles."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.9"
+authors = [{ name = "pony" }]
+dependencies = [
+  "beautifulsoup4>=4.12",
+  "click>=8.1",
+  "httpx>=0.27",
+  "markdownify>=0.13",
+  "PyYAML>=6.0",
+  "rich>=13.7",
+]
+
+[project.scripts]
+juejin = "juejin_cli.cli:cli"
+
+[tool.hatch.build.targets.wheel]
+packages = ["juejin_cli"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
